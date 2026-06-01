@@ -306,3 +306,98 @@ async fn me(req: HttpRequest) -> impl Responder {
 
     HttpResponse::Ok().body(format!("you are user {}", decoded.claims.sub))
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn buy_matches_cheapest_asks_first() {
+        let mut book = OrderBook::new();
+
+        // Two resting sell orders sitting on the book.
+        book.add_resting(Order {
+            id: 1,
+            side: Side::Sell,
+            price: 60,
+            quantity: 5,
+        });
+        book.add_resting(Order {
+            id: 2,
+            side: Side::Sell,
+            price: 61,
+            quantity: 8,
+        });
+
+        // A buyer wants 10 contracts, willing to pay up to 62c.
+        let fills = book.match_order(Order {
+            id: 3,
+            side: Side::Buy,
+            price: 62,
+            quantity: 10,
+        });
+
+        // We expect: 5 @ 60c (from order 1), then 5 @ 61c (from order 2).
+        assert_eq!(
+            fills,
+            vec![
+                Fill {
+                    price: 60,
+                    quantity: 5,
+                    maker_id: 1,
+                    taker_id: 3
+                },
+                Fill {
+                    price: 61,
+                    quantity: 5,
+                    maker_id: 2,
+                    taker_id: 3
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn sell() {
+        let mut arrange = OrderBook::new();
+
+        arrange.add_resting(Order {
+            id: 1,
+            side: Side::Buy,
+            price: 40,
+            quantity: 7,
+        });
+        arrange.add_resting(Order {
+            id: 2,
+            side: Side::Buy,
+            price: 39,
+            quantity: 15,
+        });
+
+        let act = arrange.match_order(Order {
+            id: 3,
+            side: Side::Sell,
+            price: 38,
+            quantity: 13,
+        });
+
+        assert_eq!(
+            act,
+            vec![
+                Fill {
+                    price: 40,
+                    quantity: 7,
+                    maker_id: 1,
+                    taker_id: 3
+                },
+                Fill {
+                    price: 39,
+                    quantity: 6,
+                    maker_id: 2,
+                    taker_id: 3
+                },
+            ]
+        );
+    }
+}
