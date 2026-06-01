@@ -35,6 +35,147 @@ struct Claims {
     exp: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum Side {
+    Buy,
+    Sell,
+}
+
+#[derive(Debug, Clone)]
+struct Order {
+    id: u64,
+    side: Side,
+    price: u32,
+    quantity: u32,
+}
+
+#[derive(Debug, Clone)]
+struct OrderBook {
+    bids: BTreeMap<u32, VecDeque<Order>>,
+    asks: BTreeMap<u32, VecDeque<Order>>,
+}
+
+impl OrderBook {
+    fn new() -> Self {
+        OrderBook {
+            bids: BTreeMap::new(),
+            asks: BTreeMap::new(),
+        }
+    }
+
+    fn add_resting(&mut self, order: Order) {
+        match order.side {
+            Side::Buy => {
+                self.bids
+                    .entry(order.price) // look up this price in the bids map
+                    .or_default() // get the queue there, or make an empty one
+                    .push_back(order); // add the order to the back of that queue
+            }
+            Side::Sell => {
+                self.asks
+                    .entry(order.price) // look up this price in the bids map
+                    .or_default() // get the queue there, or make an empty one
+                    .push_back(order); // add the order to the back of that queue
+            }
+        }
+    }
+
+    fn match_order(&mut self, mut taker: Order) -> Vec<Fill> {
+        let mut fills = Vec::new();
+
+        match taker.side {
+            // A BUY matches against the ASKS, cheapest first.
+            Side::Buy => {
+                while taker.quantity > 0 {
+                    // Find the lowest ask price. If there are no asks, stop.
+                    let best_price = match self.asks.keys().next() {
+                        Some(&p) => p,
+                        None => break,
+                    };
+                    // If the cheapest ask costs more than we're willing to pay, stop.
+                    if best_price > taker.price {
+                        break;
+                    }
+
+                    let level = self.asks.get_mut(&best_price).unwrap(); // the queue at that price
+                    let maker = level.front_mut().unwrap(); // the oldest order there
+
+                    // Trade as much as both sides allow.
+                    let fill_qty = taker.quantity.min(maker.quantity);
+                    fills.push(Fill {
+                        price: best_price, // fill at the MAKER's price (§7.4)
+                        quantity: fill_qty,
+                        maker_id: maker.id,
+                        taker_id: taker.id,
+                    });
+                    maker.quantity -= fill_qty;
+                    taker.quantity -= fill_qty;
+
+                    // If the maker is fully filled, remove it; if the level is now empty, drop it.
+                    if maker.quantity == 0 {
+                        level.pop_front();
+                        if level.is_empty() {
+                            self.asks.remove(&best_price);
+                        }
+                    }
+                }
+            }
+
+            // A SELL matches against the BIDS, highest first.
+            Side::Sell => {
+                while taker.quantity > 0 {
+                    // Find the lowest ask price. If there are no asks, stop.
+                    let best_price = match self.bids.keys().next_back() {
+                        Some(&p) => p,
+                        None => break,
+                    };
+                    // If the cheapest ask costs more than we're willing to pay, stop.
+                    if best_price < taker.price {
+                        break;
+                    }
+
+                    let level = self.bids.get_mut(&best_price).unwrap(); // the queue at that price
+                    let maker = level.front_mut().unwrap(); // the oldest order there
+
+                    // Trade as much as both sides allow.
+                    let fill_qty = taker.quantity.min(maker.quantity);
+                    fills.push(Fill {
+                        price: best_price, // fill at the MAKER's price (§7.4)
+                        quantity: fill_qty,
+                        maker_id: maker.id,
+                        taker_id: taker.id,
+                    });
+                    maker.quantity -= fill_qty;
+                    taker.quantity -= fill_qty;
+
+                    // If the maker is fully filled, remove it; if the level is now empty, drop it.
+                    if maker.quantity == 0 {
+                        level.pop_front();
+                        if level.is_empty() {
+                            self.bids.remove(&best_price);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Whatever didn't fill rests on the book (limit-order behavior).
+        if taker.quantity > 0 {
+            self.add_resting(taker);
+        }
+
+        fills
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Fill {
+    price: u32,
+    quantity: u32,
+    maker_id: u64, // the resting order that was sitting on the book
+    taker_id: u64, // the incoming order that matched against it
+}
+
 #[actix_web::main]
 async fn main() {
     dotenvy::dotenv().ok();
