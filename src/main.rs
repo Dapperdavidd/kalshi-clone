@@ -1,6 +1,8 @@
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, web};
 use jsonwebtoken::{DecodingKey, Validation};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+
+use order_book::{Order, OrderBook, Side};
 mod order_book;
 
 #[derive(serde::Serialize, sqlx::FromRow)]
@@ -35,6 +37,22 @@ struct Claims {
     exp: usize,
 }
 
+#[derive(serde::Deserialize)]
+struct PlaceOrderRequest {
+    market_id: i64,
+    side: String,
+    price: i32,
+    quantity: i32,
+}
+
+#[derive(sqlx::FromRow)]
+struct DbOrder {
+    id: i64,
+    side: String,
+    price: i32,
+    remaining: i32,
+}
+
 #[actix_web::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -56,6 +74,7 @@ async fn main() {
             .route("/v1/auth/signup", web::post().to(signup))
             .route("/v1/auth/login", web::post().to(login))
             .route("/v1/me", web::get().to(me))
+            .route("/v1/orders", web::post().to(place_order))
     })
     .bind("127.0.0.1:8080")
     .unwrap()
@@ -164,4 +183,107 @@ async fn me(req: HttpRequest) -> impl Responder {
     .unwrap();
 
     HttpResponse::Ok().body(format!("you are user {}", decoded.claims.sub))
+}
+
+async fn place_order(
+    req: HttpRequest,
+    body: web::Json<PlaceOrderRequest>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let token = req
+        .headers()
+        .get("Authorization")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .strip_prefix("Bearer ")
+        .unwrap();
+
+    let secret = std::env::var("JWT_SECRET").unwrap();
+
+    let decoded = jsonwebtoken::decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &Validation::default(),
+    )
+    .unwrap();
+
+    let mut tx = pool.begin().await.unwrap();
+
+    let mut book = load_book(pool.get_ref(), body.market_id).await;
+
+    let taker_id: i64 = sqlx::query_scalar(
+        "INSERT INTO orders (user_id, market_id, side, price, quantity, remaining) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id ",
+    )
+    .bind(decoded.claims.sub)
+    .bind(body.market_id)
+    .bind(&body.side)
+    .bind(body.price)
+    .bind(body.quantity)
+    .bind(body.quantity)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+
+    let taker = Order {
+        id: taker_id as u64,
+        side: match body.side.as_str() {
+            "buy" => Side::Buy,
+            _ => Side::Sell,
+        },
+        price: body.price as u32,
+        quantity: body.quantity as u32,
+    };
+
+        let fills = book.match_order(taker);
+
+    for fill in &fills {
+        sqlx::query(
+            "INSERT INTO trades (market_id, maker_order_id, taker_order_id, price, quantity) VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(body.market_id)
+        .bind(fill.maker_id as i64)
+        .bind(fill.taker_id as i64)
+        .bind(fill.price as i32)
+        .bind(fill.quantity as i32)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+        sqlx::query("UPDATE orders SET remaining = remaining - $1 WHERE id = $2")
+            .bind(fill.quantity as i32)
+            .bind(fill.maker_id as i64)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+    }
+
+    tx.commit().await.unwrap();
+
+    HttpResponse::Created().body(format!("order {taker_id}: {} fills", fills.len()))
+
+}
+
+async fn load_book(pool: &PgPool, market_id: i64) -> OrderBook {
+    let result = sqlx::query_as::<_, DbOrder>("SELECT id, side, price, remaining FROM orders WHERE market_id = $1 AND status IN ('working','partially_filled') AND remaining > 0 ")
+    .bind(market_id)
+    .fetch_all(pool)
+    .await
+    .unwrap();
+
+    let mut book = OrderBook::new();
+
+    for row in result {
+        let order = Order {
+            id: row.id as u64,
+            side: match row.side.as_str() {
+                "buy" => Side::Buy,
+                _ => Side::Sell,
+            },
+            price: row.price as u32,
+            quantity: row.remaining as u32,
+        };
+        book.add_resting(order);
+    }
+    book
 }
