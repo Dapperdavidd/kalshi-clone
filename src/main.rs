@@ -289,6 +289,24 @@ async fn place_order(
         .await
         .unwrap();
 
+        let cash = fill.price as i64 * fill.quantity as i64;
+        let taker_cash = if body.side == "buy" { -cash } else { cash };
+
+        sqlx::query("UPDATE balances SET amount = amount + $1 WHERE user_id = $2")
+            .bind(taker_cash)
+            .bind(decoded.claims.sub)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+
+        let maker_cash = -taker_cash;
+        sqlx::query("UPDATE balances SET amount = amount + $1 WHERE user_id = $2")
+            .bind(maker_cash)
+            .bind(maker_user_id)
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+
         filled_total += fill.quantity as i32;
     }
 
