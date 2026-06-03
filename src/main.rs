@@ -235,7 +235,9 @@ async fn place_order(
         quantity: body.quantity as u32,
     };
 
-        let fills = book.match_order(taker);
+    let fills = book.match_order(taker);
+
+    let mut filled_total: i32 = 0;
 
     for fill in &fills {
         sqlx::query(
@@ -250,18 +252,35 @@ async fn place_order(
         .await
         .unwrap();
 
-        sqlx::query("UPDATE orders SET remaining = remaining - $1 WHERE id = $2")
+        sqlx::query("UPDATE orders
+                        SET remaining = remaining - $1,
+                        status = CASE WHEN remaining - $1 = 0 THEN 'filled' ELSE 'partially_filled' END
+                        WHERE id = $2"
+                    )
             .bind(fill.quantity as i32)
             .bind(fill.maker_id as i64)
             .execute(&mut *tx)
             .await
             .unwrap();
+
+        filled_total += fill.quantity as i32;
     }
+
+    sqlx::query(
+        "UPDATE orders
+                    SET remaining = remaining - $1,
+                    status = CASE WHEN remaining - $1 = 0 THEN 'filled' ELSE 'partially_filled' END
+                    WHERE id = $2",
+    )
+    .bind(filled_total)
+    .bind(taker_id)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
 
     tx.commit().await.unwrap();
 
     HttpResponse::Created().body(format!("order {taker_id}: {} fills", fills.len()))
-
 }
 
 async fn load_book(pool: &PgPool, market_id: i64) -> OrderBook {
