@@ -263,6 +263,32 @@ async fn place_order(
             .await
             .unwrap();
 
+        let maker_user_id: i64 = sqlx::query_scalar("SELECT user_id FROM orders WHERE id = $1")
+            .bind(fill.maker_id as i64)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+
+        // Maker is on the opposite side of the taker.
+        let maker_delta = if body.side == "buy" {
+            -(fill.quantity as i32)
+        } else {
+            fill.quantity as i32
+        };
+
+        sqlx::query(
+            "INSERT INTO positions (user_id, market_id, quantity)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, market_id)
+             DO UPDATE SET quantity = positions.quantity + EXCLUDED.quantity",
+        )
+        .bind(maker_user_id)
+        .bind(body.market_id)
+        .bind(maker_delta)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
         filled_total += fill.quantity as i32;
     }
 
@@ -274,6 +300,25 @@ async fn place_order(
     )
     .bind(filled_total)
     .bind(taker_id)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+
+    let taker_delta = if body.side == "buy" {
+        filled_total
+    } else {
+        -filled_total
+    };
+
+    sqlx::query(
+        "INSERT INTO positions (user_id, market_id, quantity)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, market_id)
+        DO UPDATE SET quantity = positions.quantity + EXCLUDED.quantity",
+    )
+    .bind(decoded.claims.sub)
+    .bind(body.market_id)
+    .bind(taker_delta)
     .execute(&mut *tx)
     .await
     .unwrap();
