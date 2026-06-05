@@ -1,81 +1,87 @@
 use actix_web::{HttpRequest, HttpResponse, Responder, web};
 use jsonwebtoken::{DecodingKey, Validation};
+
 use sqlx::PgPool;
 
+use crate::error::AppError;
 use crate::models::{Claims, LoginRequest, SignupRequest, User};
 
 /// Pull the JWT off the `Authorization: Bearer <token>` header, verify it,
 /// and return the authenticated user's id. Shared by every protected handler.
-pub fn authenticate(req: &HttpRequest) -> i64 {
-    let token = req
+pub fn authenticate(req: &HttpRequest) -> Result<i64, AppError> {
+    let header = req
         .headers()
         .get("Authorization")
-        .unwrap()
+        .ok_or_else(|| AppError::Unauthorized("missing Authorization header".into()))?
         .to_str()
-        .unwrap()
-        .strip_prefix("Bearer ")
-        .unwrap();
+        .map_err(|_| AppError::Unauthorized("malformed Authorization header".into()))?;
 
-    let secret = std::env::var("JWT_SECRET").unwrap();
+    let token = header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| AppError::Unauthorized("expected Bearer token".into()))?;
+
+    let secret =
+        std::env::var("JWT_SECRET").map_err(|_| AppError::Internal("JWT_SECRET not set".into()))?;
 
     let decoded = jsonwebtoken::decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
-    )
-    .unwrap();
+    )?;
 
-    decoded.claims.sub
+    Ok(decoded.claims.sub)
 }
 
-pub async fn signup(body: web::Json<SignupRequest>, pool: web::Data<PgPool>) -> impl Responder {
+pub async fn signup(
+    body: web::Json<SignupRequest>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, AppError> {
     let hash = bcrypt::hash(&body.password, bcrypt::DEFAULT_COST).unwrap();
     let _ = sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
         .bind(&body.email)
         .bind(&hash)
         .execute(pool.get_ref())
-        .await
-        .unwrap();
+        .await?;
 
-    HttpResponse::Created().body("user created")
+    Ok(HttpResponse::Created().body("user created"))
 }
 
-pub async fn login(body: web::Json<LoginRequest>, pool: web::Data<PgPool>) -> impl Responder {
-    let result = sqlx::query_as::<_, User>("SELECT id, password_hash FROM users WHERE email = $1")
+pub async fn login(
+    body: web::Json<LoginRequest>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, AppError> {
+    let user = sqlx::query_as::<_, User>("SELECT id, password_hash FROM users WHERE email = $1")
         .bind(&body.email)
         .fetch_optional(pool.get_ref())
-        .await
-        .unwrap();
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("invalid login details".into()))?;
 
-    match result {
-        Some(user) => {
-            if bcrypt::verify(&body.password, &user.password_hash).unwrap() {
-                let exp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    + 24 * 60 * 60;
-                let claims = Claims {
-                    sub: user.id,
-                    exp: exp.try_into().unwrap(),
-                };
-                let secret = std::env::var("JWT_SECRET").unwrap();
-                let token = jsonwebtoken::encode(
-                    &jsonwebtoken::Header::default(),
-                    &claims,
-                    &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
-                )
-                .unwrap();
-                HttpResponse::Ok().body(token)
-            } else {
-                HttpResponse::Unauthorized().body("invalid login details")
-            }
-        }
-        None => HttpResponse::Unauthorized().body("invalid login details"),
+    if !bcrypt::verify(&body.password, &user.password_hash)? {
+        return Err(AppError::Unauthorized("invalid login details".into()));
     }
+
+    let exp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| AppError::Internal(Box::new(e)))?
+        .as_secs()
+        + 24 * 60 * 60;
+
+    let claims = Claims {
+        sub: user.id,
+        exp: exp as usize,
+    };
+    let secret =
+        std::env::var("JWT_SECRET").map_err(|_| AppError::Internal("JWT_SECRET not set".into()))?;
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+    )?;
+
+    Ok(HttpResponse::Ok().body(token))
 }
 
-pub async fn me(req: HttpRequest) -> impl Responder {
-    let user_id = authenticate(&req);
-    HttpResponse::Ok().body(format!("you are user {}", user_id))
+pub async fn me(req: HttpRequest) -> Result<HttpResponse, AppError> {
+    let user_id = authenticate(&req)?;
+    Ok(HttpResponse::Ok().body(format!("you are user {user_id}")))
 }
