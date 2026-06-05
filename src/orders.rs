@@ -1,17 +1,17 @@
-use actix_web::{HttpRequest, HttpResponse, Responder, web};
+use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 
-use crate::auth::authenticate;
 use crate::error::AppError;
+use crate::extractors::AuthUser;
 use crate::models::{DbOrder, PlaceOrderRequest};
 use crate::order_book::{Order, OrderBook, Side};
 
 pub async fn place_order(
-    req: HttpRequest,
+    user: AuthUser,
     body: web::Json<PlaceOrderRequest>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, AppError> {
-    let user_id = authenticate(&req)?;
+    let user_id = user.id;
 
     let mut tx = pool.begin().await?;
 

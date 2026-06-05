@@ -1,36 +1,11 @@
-use actix_web::{HttpRequest, HttpResponse, Responder, web};
-use jsonwebtoken::{DecodingKey, Validation};
+use actix_web::{HttpResponse, web};
+use jsonwebtoken;
 
 use sqlx::PgPool;
 
 use crate::error::AppError;
+use crate::extractors::AuthUser;
 use crate::models::{Claims, LoginRequest, SignupRequest, User};
-
-/// Pull the JWT off the `Authorization: Bearer <token>` header, verify it,
-/// and return the authenticated user's id. Shared by every protected handler.
-pub fn authenticate(req: &HttpRequest) -> Result<i64, AppError> {
-    let header = req
-        .headers()
-        .get("Authorization")
-        .ok_or_else(|| AppError::Unauthorized("missing Authorization header".into()))?
-        .to_str()
-        .map_err(|_| AppError::Unauthorized("malformed Authorization header".into()))?;
-
-    let token = header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized("expected Bearer token".into()))?;
-
-    let secret =
-        std::env::var("JWT_SECRET").map_err(|_| AppError::Internal("JWT_SECRET not set".into()))?;
-
-    let decoded = jsonwebtoken::decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
-    )?;
-
-    Ok(decoded.claims.sub)
-}
 
 pub async fn signup(
     body: web::Json<SignupRequest>,
@@ -81,7 +56,6 @@ pub async fn login(
     Ok(HttpResponse::Ok().body(token))
 }
 
-pub async fn me(req: HttpRequest) -> Result<HttpResponse, AppError> {
-    let user_id = authenticate(&req)?;
-    Ok(HttpResponse::Ok().body(format!("you are user {user_id}")))
+pub async fn me(user: AuthUser) -> Result<HttpResponse, AppError> {
+    Ok(HttpResponse::Ok().body(format!("you are user {}", user.id)))
 }

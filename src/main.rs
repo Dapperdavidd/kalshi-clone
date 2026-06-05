@@ -3,6 +3,7 @@ use sqlx::postgres::PgPoolOptions;
 
 mod auth;
 mod error;
+mod extractors;
 mod health;
 mod markets;
 mod models;
