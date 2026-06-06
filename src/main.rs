@@ -1,6 +1,7 @@
 use actix_web::{App, HttpServer, web};
 use sqlx::postgres::PgPoolOptions;
 
+mod account;
 mod auth;
 mod error;
 mod extractors;

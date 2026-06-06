@@ -88,7 +88,32 @@ pub struct DbCancelRow {
 #[derive(serde::Serialize, sqlx::FromRow)]
 pub struct PositionView {
     pub market_id: i64,
-    pub quantity: i32,   // signed: + long YES, - short
+    pub quantity: i32,   
+}
+
+#[derive(serde::Serialize)]
+pub struct PortfolioPosition {
+    pub market_id: i64,
+    pub question: String,
+    pub quantity: i32,
+    pub mark_price: i32,      
+    pub value_cents: i64,     
+}
+
+#[derive(serde::Serialize)]
+pub struct Portfolio {
+    pub balance_cents: i64,
+    pub positions: Vec<PortfolioPosition>,
+    pub positions_value_cents: i64,
+    pub equity_cents: i64,    
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PortfolioRow {
+    pub market_id: i64,
+    pub question: String,
+    pub quantity: i32,
+    pub mark_price: Option<i32>,
 }
 
 #[derive(serde::Deserialize)]
