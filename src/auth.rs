@@ -7,18 +7,52 @@ use crate::error::AppError;
 use crate::extractors::AuthUser;
 use crate::models::{Claims, LoginRequest, SignupRequest, User};
 
+const STARTING_BALANCE_CENTS: i64 = 10_000;
+
 pub async fn signup(
     body: web::Json<SignupRequest>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, AppError> {
-    let hash = bcrypt::hash(&body.password, bcrypt::DEFAULT_COST).unwrap();
-    let _ = sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
-        .bind(&body.email)
-        .bind(&hash)
-        .execute(pool.get_ref())
+    if !body.email.contains('@') || body.email.len() > 254 {
+        return Err(AppError::BadRequest("invalid email".into()));
+    }
+    if body.password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "password must be at least 8 characters".into(),
+        ));
+    }
+
+    let hash = bcrypt::hash(&body.password, bcrypt::DEFAULT_COST)?;
+
+    let mut tx = pool.begin().await?;
+
+    let user_id: i64 =
+        sqlx::query_scalar("INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id")
+            .bind(&body.email)
+            .bind(&hash)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(signup_db_error)?;
+
+    sqlx::query("INSERT INTO balances (user_id, amount) VALUES ($1, $2)")
+        .bind(user_id)
+        .bind(STARTING_BALANCE_CENTS)
+        .execute(&mut *tx)
         .await?;
 
-    Ok(HttpResponse::Created().body("user created"))
+    tx.commit().await?;
+
+    Ok(HttpResponse::Created().json(serde_json::json!({ "id": user_id })))
+}
+
+fn signup_db_error(e: sqlx::Error) -> AppError {
+    if let sqlx::Error::Database(db) = &e {
+        // 23505 = unique_violation in Postgres.
+        if db.code().as_deref() == Some("23505") {
+            return AppError::Conflict("email already registered".into());
+        }
+    }
+    AppError::from(e) // fall back to our generic conversion (-> 500)
 }
 
 pub async fn login(
