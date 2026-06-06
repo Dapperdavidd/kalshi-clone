@@ -76,6 +76,15 @@ pub struct OrderView {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct DbCancelRow {
+    pub user_id: i64,
+    pub side: String,
+    pub price: i32,
+    pub remaining: i32,
+    pub status: String,
+}
+
 #[derive(serde::Deserialize)]
 pub struct PlaceOrderRequest {
     pub market_id: i64,

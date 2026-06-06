@@ -3,7 +3,7 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::extractors::AuthUser;
-use crate::models::{DbOrder, OrderView, PlaceOrderRequest};
+use crate::models::{DbCancelRow, DbOrder, OrderView, PlaceOrderRequest};
 use crate::order_book::{Order, OrderBook, Side};
 
 fn unit_collateral(side: &Side, price: i32) -> i64 {
@@ -230,4 +230,60 @@ pub async fn list_orders(
     .fetch_all(pool.get_ref())
     .await?;
     Ok(HttpResponse::Ok().json(orders))
+}
+
+pub async fn cancel_order(
+    user: AuthUser,
+    path: web::Path<i64>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, AppError> {
+    let order_id = path.into_inner();
+    let mut tx = pool.begin().await?;
+
+    // Lock the order row so a concurrent fill can't change `remaining` between
+    // our read and our update.
+    let order = sqlx::query_as::<_, DbCancelRow>(
+        "SELECT user_id, side, price, remaining, status FROM orders \
+         WHERE id = $1 FOR UPDATE",
+    )
+    .bind(order_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::NotFound(format!("order {order_id} not found")))?;
+
+    // Authorization: you can only cancel your own order.
+    if order.user_id != user.id {
+        return Err(AppError::Forbidden("not your order".into()));
+    }
+
+    // Only live orders can be cancelled.
+    if !matches!(order.status.as_str(), "working" | "partially_filled") {
+        return Err(AppError::Conflict(format!(
+            "order is {}, cannot cancel",
+            order.status
+        )));
+    }
+
+    // Refund collateral for the still-unfilled remainder.
+    let unit = if order.side == "buy" {
+        order.price as i64
+    } else {
+        (100 - order.price) as i64
+    };
+    let refund = unit * order.remaining as i64;
+
+    sqlx::query("UPDATE balances SET amount = amount + $1 WHERE user_id = $2")
+        .bind(refund)
+        .bind(user.id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Mark cancelled and zero the remaining so it can never match again.
+    sqlx::query("UPDATE orders SET status = 'cancelled', remaining = 0 WHERE id = $1")
+        .bind(order_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "cancelled": order_id, "refunded": refund })))
 }
