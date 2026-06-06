@@ -30,6 +30,14 @@ pub struct Claims {
     pub exp: usize,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct DbOrder {
+    pub id: i64,
+    pub side: String,
+    pub price: i32,
+    pub remaining: i32,
+}
+
 #[derive(serde::Deserialize)]
 pub struct PlaceOrderRequest {
     pub market_id: i64,
@@ -38,10 +46,33 @@ pub struct PlaceOrderRequest {
     pub quantity: i32,
 }
 
-#[derive(sqlx::FromRow)]
-pub struct DbOrder {
-    pub id: i64,
-    pub side: String,
-    pub price: i32,
-    pub remaining: i32,
+impl PlaceOrderRequest {
+    pub fn validate(&self) -> Result<crate::order_book::Side, crate::error::AppError> {
+        use crate::error::AppError;
+        use crate::order_book::Side;
+
+        let side = match self.side.as_str() {
+            "buy" => Side::Buy,
+            "sell" => Side::Sell,
+            other => {
+                return Err(AppError::BadRequest(format!(
+                    "side must be 'buy' or 'sell', got '{other}'"
+                )));
+            }
+        };
+
+        if !(1..=99).contains(&self.price) {
+            return Err(AppError::BadRequest(
+                "price must be between 1 and 99".into(),
+            ));
+        }
+
+        if !(1..=10_000).contains(&self.quantity) {
+            return Err(AppError::BadRequest(
+                "quantity must be between 1 and 10000".into(),
+            ));
+        }
+
+        Ok(side)
+    }
 }
