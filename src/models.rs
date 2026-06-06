@@ -85,6 +85,12 @@ pub struct DbCancelRow {
     pub status: String,
 }
 
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct PositionView {
+    pub market_id: i64,
+    pub quantity: i32,   // signed: + long YES, - short
+}
+
 #[derive(serde::Deserialize)]
 pub struct PlaceOrderRequest {
     pub market_id: i64,
