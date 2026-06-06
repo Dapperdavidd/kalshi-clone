@@ -31,10 +31,23 @@ async fn main() -> std::io::Result<()> {
             .route("/db_check", web::get().to(health::db_check))
             .route("/v1/markets", web::get().to(markets::markets))
             .route("/v1/markets/{id}", web::get().to(markets::markets_id))
+            .route(
+                "/v1/markets/{id}/orderbook",
+                web::get().to(markets::orderbook),
+            )
+            .route(
+                "/v1/markets/{id}/trades",
+                web::get().to(markets::market_trades),
+            )
             .route("/v1/auth/signup", web::post().to(auth::signup))
             .route("/v1/auth/login", web::post().to(auth::login))
             .route("/v1/me", web::get().to(auth::me))
             .route("/v1/orders", web::post().to(orders::place_order))
+            .route("/v1/orders", web::get().to(orders::list_orders))
+            .route("/v1/orders/{id}", web::delete().to(orders::cancel_order))
+            .route("/v1/positions", web::get().to(account::positions))
+            .route("/v1/balance", web::get().to(account::balance))
+            .route("/v1/portfolio", web::get().to(account::portfolio))
     })
     .bind("127.0.0.1:8080")?
     .run()
