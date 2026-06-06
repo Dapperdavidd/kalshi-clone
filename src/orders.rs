@@ -3,7 +3,7 @@ use sqlx::PgPool;
 
 use crate::error::AppError;
 use crate::extractors::AuthUser;
-use crate::models::{DbOrder, PlaceOrderRequest};
+use crate::models::{DbOrder, OrderView, PlaceOrderRequest};
 use crate::order_book::{Order, OrderBook, Side};
 
 fn unit_collateral(side: &Side, price: i32) -> i64 {
@@ -216,4 +216,18 @@ async fn load_book(
         });
     }
     Ok(book)
+}
+
+pub async fn list_orders(
+    user: AuthUser,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, AppError> {
+    let orders = sqlx::query_as::<_, OrderView>(
+        "SELECT id, market_id, side, price, quantity, remaining, status, created_at \
+         FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(user.id)
+    .fetch_all(pool.get_ref())
+    .await?;
+    Ok(HttpResponse::Ok().json(orders))
 }
