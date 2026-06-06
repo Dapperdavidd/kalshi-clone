@@ -38,6 +38,32 @@ pub struct DbOrder {
     pub remaining: i32,
 }
 
+#[derive(serde::Serialize)]
+pub struct BookLevel {
+    pub price: i32,
+    pub quantity: i64, 
+}
+
+#[derive(serde::Serialize)]
+pub struct OrderBookView {
+    pub market_id: i64,
+    pub bids: Vec<BookLevel>,
+    pub asks: Vec<BookLevel>,  
+}
+
+#[derive(sqlx::FromRow)]
+pub struct LevelRow {
+    pub price: i32,
+    pub quantity: Option<i64>, 
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+pub struct TradePrint {
+    pub price: i32,
+    pub quantity: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(serde::Deserialize)]
 pub struct PlaceOrderRequest {
     pub market_id: i64,
