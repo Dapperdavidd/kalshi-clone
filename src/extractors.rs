@@ -21,7 +21,24 @@ impl FromRequest for AuthUser {
     }
 }
 
-fn extract_user(req: &HttpRequest) -> Result<AuthUser, AppError> {
+/// Like AuthUser, but extraction fails with 403 unless the token's is_admin
+/// claim is true. Use it on privileged handlers (e.g. resolving a market).
+pub struct AdminUser {
+    pub id: i64,
+}
+
+impl FromRequest for AdminUser {
+    type Error = AppError;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        ready(extract_admin(req))
+    }
+}
+
+/// Shared JWT decoding: pull the Bearer token, verify the signature/expiry,
+/// and return the claims. Both extractors build on this.
+fn decode_claims(req: &HttpRequest) -> Result<Claims, AppError> {
     let header = req
         .headers()
         .get("Authorization")
@@ -42,7 +59,19 @@ fn extract_user(req: &HttpRequest) -> Result<AuthUser, AppError> {
         &Validation::default(),
     )?;
 
+    Ok(decoded.claims)
+}
+
+fn extract_user(req: &HttpRequest) -> Result<AuthUser, AppError> {
     Ok(AuthUser {
-        id: decoded.claims.sub,
+        id: decode_claims(req)?.sub,
     })
+}
+
+fn extract_admin(req: &HttpRequest) -> Result<AdminUser, AppError> {
+    let claims = decode_claims(req)?;
+    if !claims.is_admin {
+        return Err(AppError::Forbidden("admin only".into()));
+    }
+    Ok(AdminUser { id: claims.sub })
 }

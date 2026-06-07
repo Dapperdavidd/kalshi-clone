@@ -22,12 +22,15 @@ pub struct LoginRequest {
 pub struct User {
     pub id: i64,
     pub password_hash: String,
+    pub is_admin: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Claims {
     pub sub: i64,
     pub exp: usize,
+    #[serde(default)] // tolerate old tokens minted before is_admin existed
+    pub is_admin: bool,
 }
 
 #[derive(sqlx::FromRow)]

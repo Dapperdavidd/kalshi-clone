@@ -59,7 +59,8 @@ pub async fn login(
     body: web::Json<LoginRequest>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, AppError> {
-    let user = sqlx::query_as::<_, User>("SELECT id, password_hash FROM users WHERE email = $1")
+    let user =
+        sqlx::query_as::<_, User>("SELECT id, password_hash, is_admin FROM users WHERE email = $1")
         .bind(&body.email)
         .fetch_optional(pool.get_ref())
         .await?
@@ -78,6 +79,7 @@ pub async fn login(
     let claims = Claims {
         sub: user.id,
         exp: exp as usize,
+        is_admin: user.is_admin,
     };
     let secret =
         std::env::var("JWT_SECRET").map_err(|_| AppError::Internal("JWT_SECRET not set".into()))?;

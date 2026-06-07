@@ -10,6 +10,7 @@ mod markets;
 mod models;
 mod order_book;
 mod orders;
+mod settlement;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -38,6 +39,10 @@ async fn main() -> std::io::Result<()> {
             .route(
                 "/v1/markets/{id}/trades",
                 web::get().to(markets::market_trades),
+            )
+            .route(
+                "/v1/markets/{id}/resolve",
+                web::post().to(settlement::resolve_market),
             )
             .route("/v1/auth/signup", web::post().to(auth::signup))
             .route("/v1/auth/login", web::post().to(auth::login))
