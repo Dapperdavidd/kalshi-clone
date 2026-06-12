@@ -61,12 +61,17 @@ pub async fn login(
 ) -> Result<HttpResponse, AppError> {
     let user =
         sqlx::query_as::<_, User>("SELECT id, password_hash, is_admin FROM users WHERE email = $1")
-        .bind(&body.email)
-        .fetch_optional(pool.get_ref())
-        .await?
+            .bind(&body.email)
+            .fetch_optional(pool.get_ref())
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("invalid login details".into()))?;
+
+    let hash = user
+        .password_hash
+        .as_ref()
         .ok_or_else(|| AppError::Unauthorized("invalid login details".into()))?;
 
-    if !bcrypt::verify(&body.password, &user.password_hash)? {
+    if !bcrypt::verify(&body.password, hash)? {
         return Err(AppError::Unauthorized("invalid login details".into()));
     }
 

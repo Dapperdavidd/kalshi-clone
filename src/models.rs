@@ -21,7 +21,7 @@ pub struct LoginRequest {
 #[derive(sqlx::FromRow)]
 pub struct User {
     pub id: i64,
-    pub password_hash: String,
+    pub password_hash: Option<String>,
     pub is_admin: bool,
 }
 

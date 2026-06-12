@@ -1,0 +1,4 @@
+-- Add migration script here
+
+ALTER TABLE users ADD COLUMN google_sub TEXT UNIQUE;
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
