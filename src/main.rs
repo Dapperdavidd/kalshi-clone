@@ -8,6 +8,7 @@ mod extractors;
 mod health;
 mod markets;
 mod models;
+mod oauth;
 mod order_book;
 mod orders;
 mod settlement;
@@ -25,9 +26,12 @@ async fn main() -> std::io::Result<()> {
 
     let data = web::Data::new(pool);
 
+    let http = web::Data::new(reqwest::Client::new());
+
     HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
+            .app_data(http.clone())
             .route("/health", web::get().to(health::health))
             .route("/db_check", web::get().to(health::db_check))
             .route("/v1/markets", web::get().to(markets::markets))
@@ -53,6 +57,7 @@ async fn main() -> std::io::Result<()> {
             .route("/v1/positions", web::get().to(account::positions))
             .route("/v1/balance", web::get().to(account::balance))
             .route("/v1/portfolio", web::get().to(account::portfolio))
+            .route("/v1/auth/google", web::post().to(oauth::google_login))
     })
     .bind("127.0.0.1:8080")?
     .run()
