@@ -6,6 +6,7 @@ mod account;
 mod auth;
 mod config;
 mod error;
+mod events;
 mod extractors;
 mod health;
 mod markets;
@@ -14,8 +15,10 @@ mod oauth;
 mod order_book;
 mod orders;
 mod settlement;
+mod ws;
 
 use config::Config;
+use events::Broadcaster;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -39,6 +42,7 @@ async fn main() -> std::io::Result<()> {
     let data = web::Data::new(pool);
     let http = web::Data::new(reqwest::Client::new());
     let config_data = web::Data::new(config.clone());
+    let broadcaster = web::Data::new(Broadcaster::new());
     let bind_addr = config.bind_addr.clone();
 
     log::info!(
@@ -61,11 +65,14 @@ async fn main() -> std::io::Result<()> {
             .app_data(data.clone())
             .app_data(http.clone())
             .app_data(config_data.clone())
+            .app_data(broadcaster.clone())
             .wrap(cors) // CORS first
             .wrap(Logger::new("%r %s %Dms")) // then request logging
             // health
             .route("/health", web::get().to(health::health))
             .route("/db_check", web::get().to(health::db_check))
+            // realtime
+            .route("/ws", web::get().to(ws::ws))
             // markets
             .route("/v1/markets", web::get().to(markets::markets))
             .route("/v1/markets/{id}", web::get().to(markets::markets_id))

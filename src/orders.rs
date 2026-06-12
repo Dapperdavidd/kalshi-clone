@@ -2,6 +2,7 @@ use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 
 use crate::error::AppError;
+use crate::events::{Broadcaster, MarketEvent};
 use crate::extractors::AuthUser;
 use crate::models::{DbCancelRow, DbOrder, OrderView, PlaceOrderRequest};
 use crate::order_book::{Order, OrderBook, Side};
@@ -17,6 +18,7 @@ pub async fn place_order(
     user: AuthUser,
     body: web::Json<PlaceOrderRequest>,
     pool: web::Data<PgPool>,
+    broadcaster: web::Data<Broadcaster>,
 ) -> Result<HttpResponse, AppError> {
     let side = body.validate()?;
     let user_id = user.id;
@@ -161,12 +163,47 @@ pub async fn place_order(
 
     tx.commit().await?;
 
+    // Publish *after* commit so we never announce a trade that rolled back.
+    for fill in &fills {
+        broadcaster.publish(MarketEvent::Trade {
+            market_id: body.market_id,
+            price: fill.price as i32,
+            quantity: fill.quantity as i32,
+        });
+    }
+    // ...and a book-changed event with the new top of book.
+    let (best_bid, best_ask) = top_of_book(pool.get_ref(), body.market_id).await?;
+    broadcaster.publish(MarketEvent::Book {
+        market_id: body.market_id,
+        best_bid,
+        best_ask,
+    });
+
     Ok(HttpResponse::Created().json(serde_json::json!({
         "order_id": taker_id,
         "filled": filled_total,
         "remaining": body.quantity - filled_total,
         "fills": fills.len(),
     })))
+}
+
+/// Best bid / best ask currently resting on a market's book.
+async fn top_of_book(pool: &PgPool, market_id: i64) -> Result<(Option<i32>, Option<i32>), AppError> {
+    let best_bid: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(price) FROM orders WHERE market_id = $1 AND side='buy' \
+         AND status IN ('working','partially_filled') AND remaining > 0",
+    )
+    .bind(market_id)
+    .fetch_one(pool)
+    .await?;
+    let best_ask: Option<i32> = sqlx::query_scalar(
+        "SELECT MIN(price) FROM orders WHERE market_id = $1 AND side='sell' \
+         AND status IN ('working','partially_filled') AND remaining > 0",
+    )
+    .bind(market_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((best_bid, best_ask))
 }
 
 async fn upsert_position(
@@ -236,12 +273,13 @@ pub async fn cancel_order(
     user: AuthUser,
     path: web::Path<i64>,
     pool: web::Data<PgPool>,
+    broadcaster: web::Data<Broadcaster>,
 ) -> Result<HttpResponse, AppError> {
     let order_id = path.into_inner();
     let mut tx = pool.begin().await?;
 
     let order = sqlx::query_as::<_, DbCancelRow>(
-        "SELECT user_id, side, price, remaining, status FROM orders \
+        "SELECT user_id, market_id, side, price, remaining, status FROM orders \
          WHERE id = $1 FOR UPDATE",
     )
     .bind(order_id)
@@ -279,5 +317,14 @@ pub async fn cancel_order(
         .await?;
 
     tx.commit().await?;
+
+    // A cancel changes the book — publish the new top of book after commit.
+    let (best_bid, best_ask) = top_of_book(pool.get_ref(), order.market_id).await?;
+    broadcaster.publish(MarketEvent::Book {
+        market_id: order.market_id,
+        best_bid,
+        best_ask,
+    });
+
     Ok(HttpResponse::Ok().json(serde_json::json!({ "cancelled": order_id, "refunded": refund })))
 }

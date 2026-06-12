@@ -2,6 +2,7 @@ use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 
 use crate::error::AppError;
+use crate::events::{Broadcaster, MarketEvent};
 use crate::extractors::AdminUser;
 
 #[derive(serde::Deserialize)]
@@ -22,6 +23,7 @@ pub async fn resolve_market(
     path: web::Path<i64>,
     body: web::Json<ResolveRequest>,
     pool: web::Data<PgPool>,
+    broadcaster: web::Data<Broadcaster>,
 ) -> Result<HttpResponse, AppError> {
     let market_id = path.into_inner();
 
@@ -123,6 +125,12 @@ pub async fn resolve_market(
     .await?;
 
     tx.commit().await?;
+
+    // Announce resolution after commit — only durable facts reach clients.
+    broadcaster.publish(MarketEvent::Resolved {
+        market_id,
+        outcome: outcome.to_string(),
+    });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "market_id": market_id,

@@ -82,6 +82,7 @@ pub struct OrderView {
 #[derive(sqlx::FromRow)]
 pub struct DbCancelRow {
     pub user_id: i64,
+    pub market_id: i64,
     pub side: String,
     pub price: i32,
     pub remaining: i32,
