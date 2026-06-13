@@ -73,6 +73,10 @@ async fn main() -> std::io::Result<()> {
             .route("/db_check", web::get().to(health::db_check))
             // realtime
             .route("/ws", web::get().to(ws::ws))
+            // events (groups of binary markets)
+            .route("/v1/events", web::get().to(markets::list_events))
+            .route("/v1/events", web::post().to(markets::create_event))
+            .route("/v1/events/{id}", web::get().to(markets::get_event))
             // markets
             .route("/v1/markets", web::get().to(markets::markets))
             .route("/v1/markets/{id}", web::get().to(markets::markets_id))

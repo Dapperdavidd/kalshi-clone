@@ -4,6 +4,62 @@ pub struct Market {
     pub question: String,
     pub status: String,
     pub rail: String,
+    pub event_id: Option<i64>,
+    pub option_label: Option<String>,
+    pub last_price: Option<i32>,
+}
+
+// ───── events (group several binary markets, Kalshi-style) ─────
+
+#[derive(sqlx::FromRow)]
+pub struct EventRow {
+    pub id: i64,
+    pub title: String,
+    pub category: String,
+    pub status: String,
+    pub is_new: bool,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct OptionRow {
+    pub event_id: Option<i64>,
+    pub market_id: i64,
+    pub label: Option<String>,
+    pub last_price: Option<i32>,
+    pub status: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct EventOption {
+    pub market_id: i64,
+    pub label: String,
+    pub yes_price: Option<i32>,
+    pub status: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct EventView {
+    pub id: i64,
+    pub title: String,
+    pub category: String,
+    pub status: String,
+    pub is_new: bool,
+    pub market_count: i64,
+    pub options: Vec<EventOption>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateOption {
+    pub label: String,
+    pub question: Option<String>,
+    pub initial_price: Option<i32>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateEventRequest {
+    pub title: String,
+    pub category: String,
+    pub options: Vec<CreateOption>,
 }
 
 #[derive(serde::Deserialize)]

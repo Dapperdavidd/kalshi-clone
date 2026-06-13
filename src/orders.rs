@@ -161,6 +161,15 @@ pub async fn place_order(
     };
     upsert_position(&mut tx, user_id, body.market_id, taker_delta).await?;
 
+    // Keep the cached Yes price fresh so market/event cards show a live %.
+    if let Some(last) = fills.last() {
+        sqlx::query("UPDATE markets SET last_price = $1 WHERE id = $2")
+            .bind(last.price as i32)
+            .bind(body.market_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
     tx.commit().await?;
 
     // Publish *after* commit so we never announce a trade that rolled back.
