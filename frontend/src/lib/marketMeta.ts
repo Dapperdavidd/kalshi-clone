@@ -20,6 +20,32 @@ export function marketMeta(question: string): MarketMeta {
   return RULES.find((r) => r.re.test(question))?.meta ?? FALLBACK;
 }
 
+/** Icon + color for an explicit category name (events carry their category). */
+const CATEGORY_META: Record<string, { emoji: string; color: string }> = {
+  Politics: { emoji: "🏛️", color: "#e84142" },
+  Sports: { emoji: "🏆", color: "#16c784" },
+  Crypto: { emoji: "₿", color: "#f7931a" },
+  Economics: { emoji: "📈", color: "#7c5cff" },
+  Culture: { emoji: "🎬", color: "#ff6b9d" },
+  Climate: { emoji: "🌍", color: "#2bb6ff" },
+  Finance: { emoji: "💵", color: "#00d09c" },
+  "Tech & Science": { emoji: "🔬", color: "#4f8bff" },
+};
+
+export function categoryMeta(category: string): { emoji: string; color: string } {
+  return CATEGORY_META[category] ?? { emoji: "◆", color: "#00d09c" };
+}
+
+/** Payout multiple for buying Yes at a given price: 100¢ payout / price paid. */
+export function multiplier(price: number | null): string {
+  if (!price) return "—";
+  return `${(100 / price).toFixed(2)}x`;
+}
+
+/** Underline accent color per option row (leader green, then blue/red/purple). */
+export const ROW_COLORS = ["#16c784", "#4f8bff", "#e84142", "#7c5cff", "#f7931a"];
+
+
 /** Implied YES probability (%) from the order-book mid, or null if no book. */
 export function impliedYes(book: OrderBook | null): number | null {
   if (!book) return null;

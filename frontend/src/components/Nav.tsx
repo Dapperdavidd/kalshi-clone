@@ -13,7 +13,7 @@ const CATEGORIES = [
 ];
 
 export default function Nav() {
-  const { isLoggedIn, logout } = useAuth();
+  const { isLoggedIn, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
@@ -57,6 +57,11 @@ export default function Nav() {
             {isLoggedIn && (
               <NavLink to="/portfolio" className="knav-link">
                 Portfolio
+              </NavLink>
+            )}
+            {isAdmin && (
+              <NavLink to="/create" className="knav-link">
+                + New
               </NavLink>
             )}
           </div>

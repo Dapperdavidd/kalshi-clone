@@ -409,6 +409,93 @@ td {
   margin-top: var(--s-1);
 }
 
+/* event card option rows */
+.ecard-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.erow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--s-4);
+}
+.erow-name {
+  min-width: 0;
+}
+.erow-name > span {
+  display: block;
+  font-size: 16px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.erow-bar {
+  height: 3px;
+  margin-top: 6px;
+  background: var(--border-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.erow-bar > div {
+  height: 100%;
+  border-radius: 2px;
+}
+.erow-mult {
+  color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.pct-lead {
+  background: rgba(0, 208, 156, 0.12);
+}
+.badge-new {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* event page option rows (clickable) */
+.erow-link {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--border-soft);
+}
+.erow-link:last-child {
+  border-bottom: none;
+}
+.erow-link:hover {
+  background: var(--surface-2);
+}
+
+/* admin create form */
+.field-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  display: block;
+}
+.select {
+  font: inherit;
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.opt-row {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: var(--s-2);
+  align-items: center;
+}
+
 /* ───────────────── order ticket (Kalshi style) ───────────────── */
 .ticket {
   background: var(--surface);

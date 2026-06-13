@@ -7,6 +7,26 @@ export interface Market {
   status: string; // "active" | "resolved"
   rail: string;
   outcome?: string | null; // present only after resolution
+  event_id?: number | null;
+  option_label?: string | null;
+  last_price?: number | null;
+}
+
+export interface EventOption {
+  market_id: number;
+  label: string;
+  yes_price: number | null;
+  status: string;
+}
+
+export interface KEvent {
+  id: number;
+  title: string;
+  category: string;
+  status: string;
+  is_new: boolean;
+  market_count: number;
+  options: EventOption[];
 }
 
 export interface BookLevel {

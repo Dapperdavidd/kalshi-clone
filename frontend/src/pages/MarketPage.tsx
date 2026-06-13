@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getMarket, getOrderBook, getTrades } from "../api/endpoints";
 import { useAsync } from "../lib/useAsync";
 import { useMarketSocket } from "../lib/useMarketSocket";
@@ -49,7 +49,12 @@ export default function MarketPage() {
 
   return (
     <div>
-      <div className="row" style={{ alignItems: "center", marginBottom: 8 }}>
+      {market.data.event_id && (
+        <Link to={`/events/${market.data.event_id}`} className="dim" style={{ fontSize: 14 }}>
+          ← Back to event
+        </Link>
+      )}
+      <div className="row" style={{ alignItems: "center", marginBottom: 8, marginTop: 8 }}>
         <div className="mcard-icon" style={{ background: meta.color }}>
           {meta.emoji}
         </div>

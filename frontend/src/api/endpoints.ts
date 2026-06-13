@@ -7,6 +7,7 @@ import type {
   Position,
   Portfolio,
   PlaceOrderResult,
+  KEvent,
 } from "./types";
 
 // --- auth ---
@@ -34,6 +35,15 @@ export const googleLogin = (credential: string) =>
     body: { credential },
     auth: false,
   });
+
+// --- events (public) ---
+export const getEvents = () => api<KEvent[]>("/v1/events", { auth: false });
+export const getEvent = (id: number) => api<KEvent>(`/v1/events/${id}`, { auth: false });
+export const createEvent = (input: {
+  title: string;
+  category: string;
+  options: { label: string; initial_price: number }[];
+}) => api<{ event_id: number; options: number }>("/v1/events", { method: "POST", body: input });
 
 // --- markets (public) ---
 export const getMarkets = () => api<Market[]>("/v1/markets", { auth: false });

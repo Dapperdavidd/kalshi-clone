@@ -1,12 +1,11 @@
 import { useSearchParams } from "react-router-dom";
-import { getMarkets } from "../api/endpoints";
+import { getEvents } from "../api/endpoints";
 import { useAsync } from "../lib/useAsync";
-import { marketMeta } from "../lib/marketMeta";
-import MarketCard from "../components/MarketCard";
+import EventCard from "../components/EventCard";
 import Skeleton from "../components/Skeleton";
 
 export default function MarketsPage() {
-  const { data: markets, loading, error } = useAsync(getMarkets, []);
+  const { data: events, loading, error } = useAsync(getEvents, []);
   const [params] = useSearchParams();
   const q = (params.get("q") ?? "").toLowerCase();
   const cat = params.get("cat");
@@ -17,18 +16,21 @@ export default function MarketsPage() {
         <h1>Trending markets</h1>
         <div className="market-grid-list">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} height={150} />
+            <Skeleton key={i} height={210} />
           ))}
         </div>
       </div>
     );
   }
   if (error) return <p className="error">Couldn’t load markets: {error}</p>;
-  if (!markets || markets.length === 0) return <p className="dim">No markets yet.</p>;
+  if (!events || events.length === 0) return <p className="dim">No markets yet.</p>;
 
-  const filtered = markets.filter((m) => {
-    if (q && !m.question.toLowerCase().includes(q)) return false;
-    if (cat && cat !== "Trending" && marketMeta(m.question).category !== cat) return false;
+  const filtered = events.filter((e) => {
+    if (cat && cat !== "Trending" && e.category !== cat) return false;
+    if (q) {
+      const hay = (e.title + " " + e.options.map((o) => o.label).join(" ")).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     return true;
   });
 
@@ -39,8 +41,8 @@ export default function MarketsPage() {
         <p className="dim">No markets match your search.</p>
       ) : (
         <div className="market-grid-list">
-          {filtered.map((m) => (
-            <MarketCard key={m.id} market={m} />
+          {filtered.map((e) => (
+            <EventCard key={e.id} event={e} />
           ))}
         </div>
       )}
